@@ -1,0 +1,13 @@
+services:
+  timetagger:
+    image: ghcr.io/almarklein/timetagger
+    ports:
+      - "${TIMETAGGER_PORT}:${TIMETAGGER_PORT}"
+    restart: unless-stopped
+    volumes:
+      - ${TIMETAGGER_VOLUME}:${TIMETAGGER_DATADIR}
+    environment:
+      - TIMETAGGER_BIND=0.0.0.0:${TIMETAGGER_PORT}
+      - TIMETAGGER_DATADIR=${TIMETAGGER_DATADIR}
+      - TIMETAGGER_LOG_LEVEL=${TIMETAGGER_LOG_LEVEL}
+      - TIMETAGGER_CREDENTIALS=${TIMETAGGER_CREDENTIALS}
