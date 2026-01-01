@@ -11,3 +11,17 @@ services:
       - TIMETAGGER_DATADIR=${TIMETAGGER_DATADIR}
       - TIMETAGGER_LOG_LEVEL=${TIMETAGGER_LOG_LEVEL}
       - TIMETAGGER_CREDENTIALS=${TIMETAGGER_CREDENTIALS}
+
+  analytics:
+    build:
+      context: ./analytics_app
+      dockerfile: Dockerfile
+    ports:
+      - "${ANALYTICS_PORT}:8501"
+    restart: unless-stopped
+    volumes:
+      - ${TIMETAGGER_VOLUME}:${TIMETAGGER_DATADIR}:ro
+    environment:
+      - TIMETAGGER_DB_PATH=${TIMETAGGER_DB_PATH}
+    depends_on:
+      - timetagger
