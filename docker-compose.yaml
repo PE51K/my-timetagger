@@ -23,5 +23,6 @@ services:
       - ${TIMETAGGER_VOLUME}:${TIMETAGGER_DATADIR}:ro
     environment:
       - TIMETAGGER_DB_PATH=${TIMETAGGER_DB_PATH}
+      - ANALYTICS_CREDENTIALS=${TIMETAGGER_CREDENTIALS}
     depends_on:
       - timetagger

@@ -6,13 +6,140 @@ Run with: streamlit run app.py
 Or with Docker: docker-compose up analytics
 """
 
+import os
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import List, Tuple
 
+import bcrypt
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from db import TimetaggerDB
+
+
+def load_credentials() -> dict:
+    """
+    Load credentials from .env file.
+    Expected format: username:pass_hash (one per line)
+    Note: bcrypt hashes contain $ characters, so we split only on the first colon.
+    
+    Returns:
+        Dictionary mapping username to password hash
+    """
+    credentials = {}
+    
+    # Try to find .env file in project root
+    script_dir = Path(__file__).parent
+    project_root = script_dir.parent
+    env_file = project_root / ".env"
+    
+    # Also check if ANALYTICS_CREDENTIALS or TIMETAGGER_CREDENTIALS env var is set
+    env_creds = os.getenv("ANALYTICS_CREDENTIALS") or os.getenv("TIMETAGGER_CREDENTIALS")
+    
+    if env_creds:
+        # Parse credentials from environment variable
+        # Format: username1:hash1,username2:hash2 or username:hash
+        for cred_line in env_creds.split(","):
+            cred_line = cred_line.strip()
+            if ":" in cred_line:
+                # Split only on first colon to preserve hash with $ characters
+                parts = cred_line.split(":", 1)
+                if len(parts) == 2:
+                    username = parts[0].strip()
+                    pass_hash = parts[1].strip()
+                    if username and pass_hash:
+                        credentials[username] = pass_hash
+    elif env_file.exists():
+        # Read from .env file
+        with open(env_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                # Skip empty lines and comments
+                if not line or line.startswith("#"):
+                    continue
+                # Split only on first colon to preserve hash with $ characters
+                if ":" in line:
+                    parts = line.split(":", 1)
+                    if len(parts) == 2:
+                        username = parts[0].strip()
+                        pass_hash = parts[1].strip()
+                        # Don't strip the hash further - preserve all $ characters
+                        if username and pass_hash:
+                            credentials[username] = pass_hash
+    
+    return credentials
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    """
+    Verify a password against a bcrypt hash.
+    
+    Args:
+        password: Plain text password
+        password_hash: Bcrypt hash string (should start with $2a$, $2b$, or $2y$)
+        
+    Returns:
+        True if password matches, False otherwise
+    """
+    try:
+        if not password or not password_hash:
+            return False
+        
+        # Bcrypt hashes should start with $2a$, $2b$, or $2y$
+        if not password_hash.startswith(("$2a$", "$2b$", "$2y$")):
+            return False
+        
+        # Ensure password_hash is bytes for bcrypt
+        if isinstance(password_hash, str):
+            password_hash_bytes = password_hash.encode("utf-8")
+        else:
+            password_hash_bytes = password_hash
+        
+        # Verify password using bcrypt
+        return bcrypt.checkpw(password.encode("utf-8"), password_hash_bytes)
+    except Exception:
+        return False
+
+
+def check_authentication(username: str, password: str) -> bool:
+    """
+    Check if username and password are valid.
+    
+    Args:
+        username: Username to check
+        password: Password to check
+        
+    Returns:
+        True if credentials are valid, False otherwise
+    """
+    credentials = load_credentials()
+    
+    if username not in credentials:
+        return False
+    
+    stored_hash = credentials[username]
+    return verify_password(password, stored_hash)
+
+
+def show_login_page():
+    """Display login page."""
+    st.title("🔐 Login to Timetagger Analytics")
+    
+    with st.form("login_form"):
+        username = st.text_input("Username", key="login_username")
+        password = st.text_input("Password", type="password", key="login_password")
+        submit_button = st.form_submit_button("Login")
+        
+        if submit_button:
+            if not username or not password:
+                st.error("Please enter both username and password.")
+            elif check_authentication(username, password):
+                st.session_state["authenticated"] = True
+                st.session_state["username"] = username
+                st.rerun()
+            else:
+                st.error("Invalid username or password.")
 
 
 def get_date_range_from_granularity(
@@ -348,7 +475,26 @@ def load_data(start_date: datetime, end_date: datetime) -> pd.DataFrame:
 
 
 def main():
+    # Initialize session state
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
+
+    # Check authentication
+    if not st.session_state["authenticated"]:
+        st.set_page_config(page_title="Timetagger Analytics - Login", layout="centered")
+        show_login_page()
+        return
+
     st.set_page_config(page_title="Timetagger Analytics", layout="wide")
+
+    # Logout button in sidebar
+    with st.sidebar:
+        st.write(f"Logged in as: **{st.session_state.get('username', 'User')}**")
+        if st.button("Logout"):
+            st.session_state["authenticated"] = False
+            st.session_state["username"] = None
+            st.rerun()
+
     st.title("📊 Timetagger Analytics")
 
     # Initialize database connection
